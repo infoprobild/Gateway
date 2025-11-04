@@ -17,21 +17,46 @@ function mockResponse(data) {
   return null;
 }
 
+// ✅ Updated auth middleware
 function auth(req, res, next) {
   const header = req.headers["authorization"];
-  if (!header) return res.status(401).json({ message: "Missing token" });
 
-  const token = header.replace("Bearer ", "");
-  try {
-    jwt.verify(token, process.env.JWT_SECRET);
-    next();
-  } catch (err) {
-    return res.status(401).json({ message: "Invalid token" });
+  if (!header) {
+    return res.status(401).json({ message: "Missing Authorization header" });
   }
+
+  // Developer API Token
+  if (header.startsWith("Token ")) {
+    const providedToken = header.replace("Token ", "").trim();
+
+    if (providedToken === process.env.DEVELOPER_API_TOKEN) {
+      req.user = { role: "developer", id: 999 };
+      return next();
+    } else {
+      return res.status(401).json({ message: "Invalid API Token" });
+    }
+  }
+
+  // Bearer JWT
+  if (header.startsWith("Bearer ")) {
+    const token = header.replace("Bearer ", "").trim();
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      req.user = decoded;
+      return next();
+    } catch (err) {
+      return res.status(401).json({ message: "Invalid JWT token" });
+    }
+  }
+
+  return res.status(400).json({
+    message: "Invalid Authorization format. Use Bearer <token> or Token <api_token>"
+  });
 }
 
 app.get("/", (req, res) => res.send("Mock Gateway API Running ✅"));
 
+// ✅ Login
 app.post("/api/auth/login", (req, res) => {
   const { username, password } = req.body;
 
@@ -44,6 +69,7 @@ app.post("/api/auth/login", (req, res) => {
 
     return res.json({
       token,
+      developer_api_token: process.env.DEVELOPER_API_TOKEN,
       user: { id: 1, username, role: "admin" }
     });
   }
@@ -51,6 +77,7 @@ app.post("/api/auth/login", (req, res) => {
   res.status(400).json({ message: "Invalid credentials" });
 });
 
+// ✅ Mock Endpoints
 app.post("/api/addandearn/order/create", auth, (req, res) => {
   return res.json(mockResponse({
     status: 1,
@@ -123,6 +150,7 @@ app.post("/api/bank-scraper/session/query", auth, (req, res) => {
   }));
 });
 
+// Callbacks
 app.post("/api/addandearn/callback/order", (req, res) => res.send("ok"));
 app.post("/api/addandearn/callback/deposit", (req, res) => res.send("ok"));
 app.post("/api/bank-scraper/callback", (req, res) => res.send("ok"));
